@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import yfinance as yf
+import pandas_datareader.data as pdr
 
 DATA_DIR = "Scripts and CSV Files"
 PORTFOLIO_CSV = f"{DATA_DIR}/chatgpt_portfolio_update.csv"
@@ -20,7 +21,12 @@ def load_portfolio_totals() -> pd.DataFrame:
 
 def download_sp500(start_date: pd.Timestamp, end_date: pd.Timestamp) -> pd.DataFrame:
     """Download S&P 500 prices and normalise to a $100 baseline."""
-    sp500 = yf.download("^SPX", start=start_date, end=end_date + pd.Timedelta(days=1), progress=False, auto_adjust=True)
+    try:
+        sp500 = yf.download("^SPX", start=start_date, end=end_date + pd.Timedelta(days=1), progress=False, auto_adjust=True)
+    except Exception:
+        sp500 = pdr.DataReader("^SPX", "stooq", start=start_date, end=end_date + pd.Timedelta(days=1))
+        sp500.sort_index(inplace=True)
+        sp500["Adj Close"] = sp500["Close"]
     sp500 = sp500.reset_index()
     if isinstance(sp500.columns, pd.MultiIndex):
         sp500.columns = sp500.columns.get_level_values(0)

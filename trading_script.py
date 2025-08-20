@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yfinance as yf
+import pandas_datareader.data as pdr
 from typing import Any, cast
 import os
 import pkg_resources
@@ -28,6 +29,7 @@ def check_versions() -> None:
     "pandas": "2.2.2",
     "yfinance": "0.2.38",
     "matplotlib": "3.8.4",
+    "pandas-datareader": "0.10.0",
     }
 
     for pkg, req_version in REQUIRED.items():
@@ -53,6 +55,42 @@ def check_weekend() -> str:
     elif dow == 6:  # Sun
         today = (pd.to_datetime(today).date() - pd.Timedelta(days=2)).isoformat()
     return today
+
+
+def download_price_data(ticker: str, **kwargs: Any) -> pd.DataFrame:
+    """Download price data with Yahoo Finance and fallback to Stooq.
+
+    Parameters
+    ----------
+    ticker:
+        The ticker symbol to download.
+    **kwargs:
+        Keyword arguments passed to ``yfinance.download``. ``period`` is
+        converted to a ``start``/``end`` pair for the Stooq fallback.
+
+    Returns
+    -------
+    pd.DataFrame
+        Price data with columns ``Open``, ``High``, ``Low``, ``Close``,
+        ``Adj Close`` and ``Volume``.
+    """
+
+    try:
+        return yf.download(ticker, **kwargs)
+    except Exception:
+        period = kwargs.pop("period", None)
+        start = kwargs.get("start")
+        end = kwargs.get("end")
+        if period and not start and not end and period.endswith("d"):
+            days = int(period[:-1])
+            end = datetime.today()
+            start = end - pd.Timedelta(days=days)
+        end = end or datetime.today()
+        start = start or (end - pd.Timedelta(days=5))
+        data = pdr.DataReader(ticker, "stooq", start=start, end=end)
+        data.sort_index(inplace=True)
+        data["Adj Close"] = data["Close"]
+        return data[["Open", "High", "Low", "Close", "Adj Close", "Volume"]]
 
 def set_data_dir(data_dir: Path) -> None:
     """Update global paths for portfolio and trade logs.
@@ -310,7 +348,7 @@ def log_manual_buy(
         chatgpt_portfolio = pd.DataFrame(columns=["ticker", "shares", "stop_loss", "buy_price", "cost_basis"])
 
     # Download current market data
-    data = yf.download(ticker, period="1d", auto_adjust=False, progress=False)
+    data = download_price_data(ticker, period="1d", auto_adjust=False, progress=False)
     data = cast(pd.DataFrame, data)
 
     if data.empty:
@@ -432,7 +470,7 @@ If this is a mistake, enter 1. """
             f"Manual sell for {ticker} failed: trying to sell {shares_sold} shares but only own {total_shares}."
         )
         return cash, chatgpt_portfolio
-    data = yf.download(ticker, period="1d")
+    data = download_price_data(ticker, period="1d")
     data = cast(pd.DataFrame, data)
     if data.empty:
         print(f"Manual sell for {ticker} failed: no market data available.")
@@ -492,7 +530,7 @@ def daily_results(chatgpt_portfolio: pd.DataFrame, cash: float) -> None:
     for stock in portfolio_dict + [{"ticker": "^RUT"}, {"ticker": "IWO"}, {"ticker": "XBI"}]:
         ticker = stock["ticker"]
         try:
-            data = yf.download(ticker, period="2d", progress=False, auto_adjust=True)
+            data = download_price_data(ticker, period="2d", progress=False, auto_adjust=True)
             data = cast(pd.DataFrame, data)
             if data.empty or len(data) < 2:
                 rows.append([ticker, "—", "—", "—"])
@@ -592,7 +630,7 @@ def daily_results(chatgpt_portfolio: pd.DataFrame, cash: float) -> None:
     start_date = equity_series.index.min() - pd.Timedelta(days=1)
     end_date = equity_series.index.max() + pd.Timedelta(days=1)
 
-    spx = yf.download("^GSPC", start=start_date, end=end_date, progress=False, auto_adjust=True)
+    spx = download_price_data("^GSPC", start=start_date, end=end_date, progress=False, auto_adjust=True)
     spx = cast(pd.DataFrame, spx)
 
     beta = np.nan
@@ -626,7 +664,7 @@ def daily_results(chatgpt_portfolio: pd.DataFrame, cash: float) -> None:
                 r2 = float(corr ** 2)
 
     # $100 normalized S&P 500 over same window
-    spx_norm = yf.download("^GSPC",
+    spx_norm = download_price_data("^GSPC",
                            start=equity_series.index.min(),
                            end=equity_series.index.max() + pd.Timedelta(days=1),
                            progress=False, auto_adjust=True)
