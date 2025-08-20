@@ -75,9 +75,14 @@ def download_price_data(ticker: str, **kwargs: Any) -> pd.DataFrame:
         ``Adj Close`` and ``Volume``.
     """
 
+    data = pd.DataFrame()
+
     try:
-        return yf.download(ticker, **kwargs)
+        data = yf.download(ticker, **kwargs)
     except Exception:
+        pass
+
+    if data.empty:
         period = kwargs.pop("period", None)
         start = kwargs.get("start")
         end = kwargs.get("end")
@@ -87,10 +92,29 @@ def download_price_data(ticker: str, **kwargs: Any) -> pd.DataFrame:
             start = end - pd.Timedelta(days=days)
         end = end or datetime.today()
         start = start or (end - pd.Timedelta(days=5))
-        data = pdr.DataReader(ticker, "stooq", start=start, end=end)
-        data.sort_index(inplace=True)
-        data["Adj Close"] = data["Close"]
-        return data[["Open", "High", "Low", "Close", "Adj Close", "Volume"]]
+
+        candidates = [ticker]
+        if ticker.startswith("^"):
+            bare = ticker[1:]
+            candidates.append(bare)
+            candidates.append(f"{bare}.US")
+        elif "." not in ticker:
+            candidates.append(f"{ticker}.US")
+
+        for symbol in candidates:
+            try:
+                data = pdr.DataReader(symbol, "stooq", start=start, end=end)
+                data.sort_index(inplace=True)
+                data["Adj Close"] = data["Close"]
+                data = data[["Open", "High", "Low", "Close", "Adj Close", "Volume"]]
+                if not data.empty:
+                    break
+            except Exception:
+                data = pd.DataFrame()
+
+    if data.empty:
+        return pd.DataFrame(columns=["Open", "High", "Low", "Close", "Adj Close", "Volume"])
+    return data
 
 def set_data_dir(data_dir: Path) -> None:
     """Update global paths for portfolio and trade logs.

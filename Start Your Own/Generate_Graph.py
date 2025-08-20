@@ -84,9 +84,21 @@ def download_sp500(dates: pd.Series, starting_equity: float = 100.0) -> pd.DataF
     end_date = pd.to_datetime(dates.max())
 
     try:
-        sp500 = yf.download("^GSPC", start=start_date, end=end_date + pd.Timedelta(days=1), progress=False)
+        sp500 = yf.download(
+            "^GSPC",
+            start=start_date,
+            end=end_date + pd.Timedelta(days=1),
+            progress=False,
+        )
+        if sp500.empty:
+            raise ValueError("No data returned from Yahoo Finance")
     except Exception:
-        sp500 = pdr.DataReader("^GSPC", "stooq", start=start_date, end=end_date + pd.Timedelta(days=1))
+        sp500 = pdr.DataReader(
+            "^GSPC",
+            "stooq",
+            start=start_date,
+            end=end_date + pd.Timedelta(days=1),
+        )
         sp500.sort_index(inplace=True)
         sp500["Adj Close"] = sp500["Close"]
     sp500 = cast(pd.DataFrame, sp500)

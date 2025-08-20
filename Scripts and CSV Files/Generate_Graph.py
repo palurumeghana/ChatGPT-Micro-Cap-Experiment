@@ -22,9 +22,22 @@ def load_portfolio_totals() -> pd.DataFrame:
 def download_sp500(start_date: pd.Timestamp, end_date: pd.Timestamp) -> pd.DataFrame:
     """Download S&P 500 prices and normalise to a $100 baseline."""
     try:
-        sp500 = yf.download("^SPX", start=start_date, end=end_date + pd.Timedelta(days=1), progress=False, auto_adjust=True)
+        sp500 = yf.download(
+            "^SPX",
+            start=start_date,
+            end=end_date + pd.Timedelta(days=1),
+            progress=False,
+            auto_adjust=True,
+        )
+        if sp500.empty:
+            raise ValueError("No data returned from Yahoo Finance")
     except Exception:
-        sp500 = pdr.DataReader("^SPX", "stooq", start=start_date, end=end_date + pd.Timedelta(days=1))
+        sp500 = pdr.DataReader(
+            "^SPX",
+            "stooq",
+            start=start_date,
+            end=end_date + pd.Timedelta(days=1),
+        )
         sp500.sort_index(inplace=True)
         sp500["Adj Close"] = sp500["Close"]
     sp500 = sp500.reset_index()
