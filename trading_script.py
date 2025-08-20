@@ -11,7 +11,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yfinance as yf
-import pandas_datareader.data as pdr
 from typing import Any, cast
 import os
 import pkg_resources
@@ -29,7 +28,6 @@ def check_versions() -> None:
     "pandas": "2.2.2",
     "yfinance": "0.2.38",
     "matplotlib": "3.8.4",
-    "pandas-datareader": "0.10.0",
     }
 
     for pkg, req_version in REQUIRED.items():
@@ -102,14 +100,21 @@ def download_price_data(ticker: str, **kwargs: Any) -> pd.DataFrame:
             candidates.append(f"{ticker}.US")
 
         for symbol in candidates:
+            url = f"https://stooq.com/q/d/l/?s={symbol.lower()}&i=d"
             try:
-                data = pdr.DataReader(symbol, "stooq", start=start, end=end)
-                data.sort_index(inplace=True)
-                data["Adj Close"] = data["Close"]
-                data = data[["Open", "High", "Low", "Close", "Adj Close", "Volume"]]
-                if not data.empty:
-                    break
+                stooq = pd.read_csv(url)
             except Exception:
+                stooq = pd.DataFrame()
+            if not stooq.empty:
+                stooq['Date'] = pd.to_datetime(stooq['Date'])
+                stooq.set_index('Date', inplace=True)
+                stooq.sort_index(inplace=True)
+                stooq = stooq.loc[(stooq.index >= pd.to_datetime(start)) & (stooq.index <= pd.to_datetime(end))]
+                stooq['Adj Close'] = stooq['Close']
+                stooq = stooq[["Open","High","Low","Close","Adj Close","Volume"]]
+                data = stooq
+                break
+            else:
                 data = pd.DataFrame()
 
     if data.empty:
